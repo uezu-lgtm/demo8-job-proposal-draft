@@ -13,7 +13,7 @@ cd /Users/tm/_Workspace/draft/demo6
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-streamlit run app.py
+streamlit run app.py --server.port 8502
 ```
 
 ## LLM設定（任意）
@@ -42,7 +42,7 @@ docker compose up --build
 docker compose exec ollama ollama pull llama3.1
 ```
 
-起動後はブラウザで `http://localhost:8501` を開きます。
+起動後はブラウザで `http://localhost:8502` を開きます。
 
 ## デモの見せ方（おすすめ）
 
