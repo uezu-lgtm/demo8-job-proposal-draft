@@ -75,16 +75,44 @@ class OllamaClient(BaseClient):
         self.base_url = base_url.rstrip("/")
 
     def complete(self, messages: list[ChatMessage], *, temperature: float = 0.2) -> str:
-        url = f"{self.base_url}/api/chat"
-        payload = {
-            "model": self.model,
-            "messages": [{"role": m.role, "content": m.content} for m in messages],
-            "stream": False,
-            "options": {"temperature": temperature},
-        }
         try:
+            # 1) Native Ollama API
+            url = f"{self.base_url}/api/chat"
+            payload = {
+                "model": self.model,
+                "messages": [{"role": m.role, "content": m.content} for m in messages],
+                "stream": False,
+                "options": {"temperature": temperature},
+            }
             r = requests.post(url, json=payload, timeout=120)
+            if r.status_code == 404:
+                # 2) OpenAI-compatible API (some setups expose only /v1/*)
+                url_v1 = f"{self.base_url}/v1/chat/completions"
+                payload_v1 = {
+                    "model": self.model,
+                    "messages": [{"role": m.role, "content": m.content} for m in messages],
+                    "temperature": temperature,
+                }
+                r2 = requests.post(url_v1, json=payload_v1, timeout=120)
+                r2.raise_for_status()
+                ct2 = (r2.headers.get("Content-Type") or "").lower()
+                if "application/json" not in ct2:
+                    snippet2 = (r2.text or "")[:200].replace("\n", " ")
+                    raise LLMError(
+                        f"Ollama(v1互換)がJSONを返しませんでした（status={r2.status_code}, content-type={ct2}）。"
+                        f" base_url={self.base_url} / snippet: {snippet2}"
+                    )
+                data2 = r2.json()
+                return (((data2.get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()
+
             r.raise_for_status()
+            ct = (r.headers.get("Content-Type") or "").lower()
+            if "application/json" not in ct:
+                snippet = (r.text or "")[:200].replace("\n", " ")
+                raise LLMError(
+                    f"OllamaがJSONを返しませんでした（status={r.status_code}, content-type={ct}）。"
+                    f" base_url={self.base_url} / snippet: {snippet}"
+                )
             data = r.json()
             return (data.get("message", {}) or {}).get("content", "").strip()
         except Exception as e:  # pragma: no cover

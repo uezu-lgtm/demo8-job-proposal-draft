@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from datetime import datetime
 from typing import Any
@@ -245,8 +246,39 @@ def validate_result(obj: dict[str, Any]) -> list[str]:
 
 def try_ollama_tags(base_url: str) -> tuple[bool, str]:
     try:
-        url = base_url.rstrip("/") + "/api/tags"
+        base = base_url.rstrip("/")
+
+        # 1) Native endpoint
+        url = base + "/api/tags"
         r = requests.get(url, timeout=8)
+        ct = (r.headers.get("Content-Type") or "").lower()
+        if "application/json" not in ct:
+            snippet = (r.text or "")[:120].replace("\n", " ")
+            return (
+                False,
+                f"JSONではない応答です（status={r.status_code}, content-type={ct}）。"
+                f" BASE_URLがOllamaでない可能性があります。例: http://localhost:11434 / snippet: {snippet}",
+            )
+        if r.status_code == 404:
+            # 2) OpenAI-compatible endpoint
+            url2 = base + "/v1/models"
+            r2 = requests.get(url2, timeout=8)
+            ct2 = (r2.headers.get("Content-Type") or "").lower()
+            if "application/json" not in ct2:
+                snippet2 = (r2.text or "")[:120].replace("\n", " ")
+                return (
+                    False,
+                    f"JSONではない応答です（status={r2.status_code}, content-type={ct2}）。"
+                    f" BASE_URLがOllamaでない可能性があります。例: http://localhost:11434 / snippet: {snippet2}",
+                )
+            r2.raise_for_status()
+            data2 = r2.json()
+            models2 = [m.get("id", "") for m in (data2.get("data") or [])]
+            models2 = [m for m in models2 if m]
+            if models2:
+                return True, " / ".join(models2[:8]) + (" …" if len(models2) > 8 else "")
+            return True, "（モデル一覧は空でした）"
+
         r.raise_for_status()
         data = r.json()
         models = [m.get("name", "") for m in (data.get("models") or [])]
@@ -366,8 +398,14 @@ def main() -> None:
 
         st.divider()
         st.caption("Ollama（任意）")
-        base_url = st.text_input("OLLAMA_BASE_URL", value=os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434"))
+        base_url = st.text_input(
+            "OLLAMA_BASE_URL",
+            value=os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434"),
+            help="OllamaのURL（通常: http://localhost:11434）。※アプリのURL（例: http://localhost:8502）ではありません。",
+        )
         model = st.text_input("OLLAMA_MODEL", value=os.environ.get("OLLAMA_MODEL", "llama3.1"))
+        if ":8502" in base_url:
+            st.warning("OLLAMA_BASE_URL がアプリ(8502)を指しています。通常は http://localhost:11434 です。")
         if st.button("Ollama接続チェック"):
             ok, msg = try_ollama_tags(base_url)
             if ok:
