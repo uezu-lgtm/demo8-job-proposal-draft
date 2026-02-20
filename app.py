@@ -398,13 +398,22 @@ def main() -> None:
 
         st.divider()
         st.caption("Ollama（任意）")
+        st.session_state.setdefault("ollama_base_url", os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434"))
+        st.session_state.setdefault("ollama_model", os.environ.get("OLLAMA_MODEL", "llama3.1"))
+
+        reset_cols = st.columns([1, 1])
+        if reset_cols[0].button("11434に戻す", use_container_width=True):
+            st.session_state["ollama_base_url"] = "http://localhost:11434"
+        if reset_cols[1].button("アプリURLを入れてしまった", use_container_width=True):
+            st.session_state["ollama_base_url"] = "http://localhost:11434"
+
         base_url = st.text_input(
             "OLLAMA_BASE_URL",
-            value=os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434"),
+            key="ollama_base_url",
             help="OllamaのURL（通常: http://localhost:11434）。※アプリのURL（例: http://localhost:8502）ではありません。",
         )
-        model = st.text_input("OLLAMA_MODEL", value=os.environ.get("OLLAMA_MODEL", "llama3.1"))
-        if ":8502" in base_url:
+        model = st.text_input("OLLAMA_MODEL", key="ollama_model")
+        if ":8502" in base_url or base_url.rstrip("/").endswith(":8502"):
             st.warning("OLLAMA_BASE_URL がアプリ(8502)を指しています。通常は http://localhost:11434 です。")
         if st.button("Ollama接続チェック"):
             ok, msg = try_ollama_tags(base_url)
